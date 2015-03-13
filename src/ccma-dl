@@ -1,0 +1,180 @@
+#!/bin/sh
+# Download media files from the CCMA web sites.
+#
+# This process has three steps:
+#  1. Download the page to extract the media id and media type
+#  2. Download the JSON object that contains the URL to the actual file
+#  3. Download the file
+#
+# Note: step 1 may not be necessary if the id & media type can be
+# inferred from the input url.
+
+tempf="$(mktemp)"		# to keep list of temporary files
+tempfile () {
+    mktemp | tee -a "$tempf"
+}
+
+clean_up () {
+    # remove temporary files
+    xargs -- rm -f < "$tempf"
+    rm -f "$tempf"
+}
+
+trap "clean_up" 0
+trap "exit 2" 1 2 3 15
+
+error () {
+    # print $1 to stderr
+    printf "%s: %s\n" "$0" "$1" 1>&2
+}
+
+usage () {
+    cat <<EOF
+usage: $0 [OPTIONS] [--] [URL]
+Download media files from the CCMA web sites.
+
+Options:
+ -i    --media-info   show media information, do not download
+       --help         show this help and exit
+
+EOF
+}
+
+# process command line arguments
+getopt -T 2> /dev/null
+[ $? -ne 4 ] && error "unsupported version of getopt" && exit 1
+
+short_opts=it:
+long_opts=media-info,type:,help
+args="$(LC_ALL=C getopt -n "$0" -s sh -o $short_opts -l $long_opts -- "$@")"
+[ $? -eq 0 ] && eval set -- "$args" || exit 1
+
+dump_media_info=
+while [ $# -gt 0 ]; do
+    case "$1" in
+	--help)
+	    usage; exit 0
+	    ;;
+	-i|--media-info)
+	    dump_media_info=1
+	    ;;
+	--)
+	    shift; break
+	    ;;
+	*)
+	    break
+    esac
+    shift
+done
+	    
+[ $# -lt 1 ] && error "non-option argument required." && exit 1
+[ $# -gt 1 ] && error "too many non-option arguments." && exit 1
+
+get_media_id () (
+    # fetch $1, extract idint, data type
+    output=$(tempfile)
+    html_data=$(tempfile)
+    style_sheet=$(tempfile)
+
+    cat <<"EOF" > "$style_sheet"
+<?xml version="1.0" encoding="UTF-8"?>
+<xsl:stylesheet xmlns:xsl="http://www.w3.org/1999/XSL/Transform"
+		version="1.0">
+<xsl:output method="text" indent="no"/>
+<xsl:template match="/">
+<xsl:apply-templates select="//div[@class='tvcplayer'][1]" />
+</xsl:template>
+<xsl:template match="div[@class='tvcplayer']">
+<xsl:value-of select="concat(./@data-idint,'&#xa;')" />
+<xsl:value-of select="concat(./@data-type,'&#xa;')" />
+</xsl:template>
+</xsl:stylesheet>
+EOF
+    
+    wget -q -O "$html_data" "$1"
+    if [ $? -ne 0 ]; then
+	error "wget exited with non-zero status, aborting."
+	return 1
+    fi
+    xsltproc --html "$style_sheet" "$html_data" 2> /dev/null > "$output"
+    printf -- "$output"
+)
+
+get_media_info () (
+    # fetch media info for idint $1 of type $2
+    media_info="$(tempfile)"
+    media_info_conv="$(tempfile)"
+    server_response="$(tempfile)"
+
+    wget -O "$media_info" -S -q "http://dinamics.ccma.cat/pvideo/media.jsp?media=${type}&version=0s&idint=${idint}&profile=pc" 2> "$server_response"
+    if [ $? -ne 0 ]; then
+	error "wget exited with non-zero status, aborting."
+	return 1
+    fi
+
+    encoding="$(sed -n '/^ *Content-Type:/s/.*charset=\([^ ;]*\).*/\L\1/p' < $server_response)"
+    if [ -n "$encoding" ]; then
+	iconv -f "$encoding" < "$media_info" > "$media_info_conv"
+    fi
+    printf -- "$media_info_conv"
+)
+
+to_slug () {
+    # make lower-case, remove punctuation and replace spaces with hyphens
+    tr "[:upper:]_ -:;,." "[:lower:][-*]" | tr -c -d "[:alnum:]-" | tr -s -
+}
+
+media_id="$(get_media_id "$1")" || exit $?
+idint="$(sed -n "1p" < "$media_id")"
+type="$(sed -n "2p" < "$media_id")"
+
+[ -z "$idint" ] && error "could not find media id." && exit 1
+[ -z "$type" ] && error "could not find media type." && exit 1
+
+media_info="$(get_media_info "$idint" "$type")" || exit $?
+if [ -n "$dump_media_info" ]; then
+    cat "$media_info"
+    exit
+fi
+
+keys='
+.media.url // "",
+.media.format // "",
+.informacio.slug // "",
+.informacio.titol_complet // "",
+.informacio.data_emissio.utc // ""
+'
+values="$(tempfile)"
+jq -e -c -r "$keys" < "$media_info" > "$values" 2> /dev/null
+status=$?
+if [ $status -eq 127 -o $status -eq 126 ]; then
+    error "jq executable not found, aborting."
+    exit 1
+elif [ $status -ne 0 ]; then
+    error "cannot parse media info, aborting."
+    exit 1
+fi    
+
+url="$(sed -n 1p < "$values")"
+format="$(sed -n "2s/.*/\L&/p" < "$values")"
+slug="$(sed -n "3s/.*/\L&/p" < "$values" | tr -s - | cut -d - -f -3)"
+title="$(sed -n "4p" <"$values" | to_slug)"
+time_stamp="$(sed -n "5s/.*/\L&/p" < "$values" | cut -c -10 | tr -d -)"
+
+[ -z "$url" ] && error "could not find media url, aborting." && exit 1
+
+output=
+if [ -n "$format" ]; then
+    if [ -n "$title" ]; then
+	
+	output="${title}.${format}"
+    elif [ -n "$time_stamp" -a -n "$slug" ]; then
+	output="${time_stamp}-${slug}-${idint}.${format}"
+    fi
+fi
+
+if [ -z "$output" -o -e "$output" ]; then
+    wget -nv --show-progress "${url}"
+else
+    wget -nv --show-progress -O "${output}" "${url}"
+fi

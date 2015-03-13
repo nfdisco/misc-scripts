@@ -1,0 +1,47 @@
+#!/bin/sh
+
+usage () {
+    # show help
+    cat <<EOF
+usage: $0 [OPTIONS] [--] [PATH]
+Show available space.
+
+Options:
+       --help      show this help and exit
+
+EOF
+}
+
+error () {
+    # write $1 to stderr
+    printf "%s\n" "$1" 1>&2
+}
+
+getopt -T 2> /dev/null
+if [ $? -ne 4 ]; then
+    error "unsupported version of getopt"
+    exit 1
+fi
+
+long_opts=help
+
+args="$(LC_ALL=C getopt -n "$0" -s sh -o "" -l $long_opts -- "$@")"
+if [ $? -eq 0 ]; then
+    eval set -- "$args"
+else
+    exit 1
+fi
+while [ $# -gt 0 ]; do
+    case "$1" in
+	--help)
+	    usage; exit 0;;
+	--)
+	    shift; break;;
+	*)
+	    break;;
+    esac
+    shift
+done
+
+df -h -P "${1:-.}" | tail -n 1 | tr -s ' ' '\t' | cut -f 4
+    

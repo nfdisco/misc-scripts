@@ -1,0 +1,158 @@
+#!/bin/sh
+# Search file system for possible rubbish.
+
+usage () {
+    cat <<EOF
+Usage: $0 [OPTIONS] [--] [PATH [PATH...]]
+Search file system for possible rubbish.
+
+Options (at least one required):
+
+ -h, --hidden     search for dot files or directories
+ -s, --links      search for broken symbolic links
+ -e, --empty      search for empty files or directories
+ -g, --large      search for large files
+ -b, --backup     search for backup files
+ -l, --latex      search for LaTeX byproducts
+
+Other options:
+ -r, --recursive  walk the directory tree recursively
+ -d, --delete     delete the files found
+     --help       show this help
+
+$0 uses GNU find extensions.
+
+EOF
+}
+
+error () {
+    # print $1 to stderr
+    printf "%s\n" "$1" 1>&2
+}
+
+confirm_yes_no () {
+    # exit with status 0 if yes
+    printf "%s" "$1 [y/n] "
+    stty cbreak
+    reply=$(dd if=/dev/tty bs=1 count=1 2>/dev/null)
+    stty -cbreak
+    printf "\n"
+    test "$reply" = "y" -o "$reply" = "Y"
+}
+
+links () {
+    # search $1 for broken links, with options $2, do action $3
+    find "$1" $2 -depth -xdev \
+	-type l -! -execdir test -e "{}" \; $3
+}
+
+backups () {
+    # search $1 for backup files, with options $2, do action $3
+    find "$1" $2 -depth -xdev -type f \( \
+	-name "*~" -o \
+	-name "*?.bak" -o \
+	-name "#*#" -o \
+	-name "*?.sw[nop]" \) $3
+}
+
+dot_files () {
+    # search $1 for hidden files, with options $2, do action $3
+    find "$1" $2 -depth -xdev \( -type f -o -type d \) \
+	-name ".*" -! -name "." -! -name ".." $3
+}
+
+empty () {
+    # search $1 for empty files, with options $2, do action $3
+    find "$1" $2 -depth -xdev \( -type f -o -type d \) -empty $3
+}
+
+big () {
+    # search $1 for large files, with options $2, do action $3
+    find "$1" $2 -depth -xdev -type f -size +100M $3
+}
+
+latex () {
+    # search $1 for latex auxiliary files, with options $2, do action $3
+    find "$1" $2 -depth -xdev -type f \
+	\( -name "*?.aux" -o -name "*?.log" -o -name "*?.out" \) \
+	-execdir sh -c \
+	'u="{}"; v="${u%????}"; test -e "${v}.tex" -o -e "${v}.ltx"' \; $3
+}
+
+print_or_delete () {
+    # perform action $1 on path $2, optionally recursively $3
+    if "$@" -ls | grep ^ && [ -n "$d" ]; then
+	confirm_yes_no "delete?" && "$@" -delete
+    fi
+}
+
+
+# command line arguments
+getopt -T 2> /dev/null
+if [ $? -ne 4 ]; then
+    error "unsupported version of getopt"
+    exit 1
+fi
+
+opts=rdhsegbl
+long_opts=recursive,delete,hidden,links,empty,large,backup,latex,help
+
+args="$(LC_ALL=C getopt -n "$0" -s sh -o $opts -l $long_opts -- "$@")"
+if [ $? -eq 0 ]; then
+    eval set -- "$args"
+else
+    exit 1
+fi
+
+d= r= actions=
+while [ $# -gt 0 ]; do
+    case "$1" in
+	--help)
+	    usage; exit 0 ;;
+	-r|--recursive)
+	    r=1 ;;
+	-d|--delete)
+	    d=1 ;;
+	-h|--hidden)
+	    actions="$actions dot_files" ;;
+	-s|--links)
+	    actions="$actions links" ;;
+	-e|--empty)
+	    actions="$actions empty" ;;
+	-g|--large)
+	    actions="$actions big" ;;
+	-b|--backup)
+	    actions="$actions backups" ;;
+	-l|--latex)
+	    actions="$actions latex" ;;
+	--)
+	    shift; break ;;
+	*)
+	    break
+    esac
+    shift
+done
+
+if [ -z "$actions" ]; then
+    error "$0: required option missing"
+    exit 1
+fi
+
+if [ $# -lt 1 ]; then
+    error "$0: required non-option argument missing"
+    exit 1
+fi
+
+actions=$(printf "%s\n" $actions | sort -u)
+
+opts=
+if [ -z "$r" ]; then
+    opts="-maxdepth 1"
+fi
+
+# main loop
+for path in "$@"; do
+    for action in $actions; do
+	print_or_delete $action "$path" "$opts"
+    done
+done

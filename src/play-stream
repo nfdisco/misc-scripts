@@ -1,0 +1,110 @@
+#!/bin/sh
+# Play media streams with mplayer.
+
+RCFILE="$HOME/.config/streams"
+
+usage () {
+    cat <<EOF
+Usage: $0 [OPTIONS] [--] STREAM [MPLAYER_OPTIONS]
+Play media streams with mplayer.
+
+Options:
+ -l    --list      list of known streams
+       --help      show this help and exit
+
+Config file is: $RCFILE
+
+Format of config file is one stream name and URL separated by white
+space per line.  Comments using the '#' character are allowed.
+
+EOF
+}
+
+error () {
+    # print $1 to stderr
+    printf '%s\n' "$1" 1>&2
+}
+
+read_rcfile () {
+    # read contents of $1 stripping comments and redundant white space
+    cat "$1" | \
+	grep -v '^[[:space:]]*\(#.*\)*$' | \
+	sed 's/#.*//' | \
+	tr -s [[:space:]]
+}
+
+stream_uri () {
+    # return the URI part from $STREAMS corresponding to stream $1
+    printf '%s\n' "$STREAMS" | grep "^${1}[[:space:]]" | cut -f 2
+}
+
+stream_names () {
+    # return the name part for every line in $STREAMS
+    printf '%s\n' "$STREAMS" | cut -f 1 | fmt
+}
+
+play_stream () {
+    # play $1, with optional options to mplayer(1)
+    stream="$1"
+    shift
+    if [ "${stream%.[mM]3[uU]}" = "$stream" ]; then
+	mplayer "$@" "$stream"
+    else
+	mplayer "$@" --playlist="$stream"
+    fi
+}
+
+# read streams file
+if [ -r "$RCFILE" ]; then
+    STREAMS="$(read_rcfile "$RCFILE")"
+fi
+
+# command line arguments
+getopt -T 2> /dev/null
+if [ $? -ne 4 ]; then
+    error "unsupported version of getopt"
+    exit 1
+fi
+
+short_opts=l
+long_opts=list,help
+args="$(LC_ALL=C getopt -n "$0" -s sh -o $short_opts -l $long_opts -- "$@")"
+if [ $? -eq 0 ]; then
+    eval set -- "$args"
+else
+    exit 1
+fi
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+	--help)
+	    usage
+	    exit;;
+	-l|--list)
+	    stream_names
+	    exit;;
+	--)
+	    shift; break;;
+	*)
+	    break;;
+    esac
+    shift
+done
+
+if [ $# -lt 1 ]; then
+    error "$0: non-option argument required"
+    exit 1
+fi
+stream_name="$1"
+shift
+
+# get uri
+uri="$(stream_uri "$stream_name")"
+if [ -z "$uri" ]; then
+    error "$0: unknown stream: $1"
+    exit 1
+fi
+
+# play uri
+printf "opening stream %s ...\n" "$uri"
+play_stream "$uri" "$@"
