@@ -1,7 +1,6 @@
 #!/bin/sh
-
-replace_chars="_ .,;-"
-# delete_chars="()[]{}*?!^~%\\\<>&\$#|'\`\""
+# 
+# TODO: check that value of otherchars is valid in bracket expression.
 
 usage () {
     # show help
@@ -10,22 +9,15 @@ usage: $0 [OPTIONS] [--] [FILE [FILE...]]
 Rename files using Unix-friendly filenames.
 
 Options:
- -e N              number of extensions or, if N < 0, do not
-                   replace dots from filenames (default: N=1)
- -d    --dry       dry run; do not rename
-       --help      show this help and exit
+ -d  --dots=N         number of dots allowed (default: 1)
+ -o  --other=CHARS    other characters allowed in filenames
+     --dry            dry run; do not rename
+     --help           show this help and exit
 
-Single and multiple occurrences of the following characters are
-replaced with a single hyphen: $replace_chars
-
-Dots are handled in a particular way because they usually have a
-special meaning.  By default, the last dot in a filename is not
-replaced, as it is assumed to be an extension marker.  A leading dot
-in a filename is never replaced either.
-
-In addition to replacing, non-alphanumeric characters are removed.
-The exact definition of alphanumeric depends on the locale in use.
-Finally, the filename is converted to lower case.
+By default the only characters allowed in filenames are alphanumeric
+characters, hyphens and the first dot counting from the right.  A
+leading dot is always allowed and does not count as dot as far as
+option -d is concerned.
 
 EOF
 }
@@ -35,65 +27,6 @@ error () {
     printf "%s\n" "$1" 1>&2
 }
 
-split () (
-    # split filename ($1) into base and n ($2) extensions using slash
-    # as separator; a leading dot always counts as extension separator
-    # 
-    # examples:
-    # split '.x.x.x.x'  0 -> '/x.x.x.x.x
-    # split '.x.x.x.x'  1 -> '/x.x.x.x/x
-    # split '.x.x.x.x'  2 -> '/x.x.x/x/x
-    # split '.x.x.x.x' -1 -> '/x/x/x/x/x
-    nf=$(printf '%s\n' "$1" | tr -d -C . | wc -c)
-    if [ $2 -lt 0 ]; then
-	keep=0
-    else
-	keep=$((nf-$2))
-    fi
-    IFS=. i=0 out= sep=
-    for part in $1; do
-	out="$out$sep$part"
-	if [ -z "$out" -o $i -ge $keep ]; then
-	    sep=/
-	else
-	    sep=.
-	fi
-	i=$(($i+1))
-    done
-    printf '%s\n' "$out"
-)
-
-normalize_string () (
-    # normalize $1 by replacing unwanted characters, removing
-    # non-alphanumeric characters and converting to lower case; some
-    # minor cosmetic changes are also performed
-    printf '%s\n' "$1" \
-	| tr -s "$replace_chars" - \
-	| sed 's/[^[:alnum:]-]//g; s/^-\(.\)/\1/; s/\(.\)-$/\1/; s/.*/\L&/'
-)
-
-normalize_filename () (
-    # normalize $1, where $1 is a filename with $2 extensions, by
-    # normalizing every component of the filename, in turn
-    IFS=/ out= sep=
-    for part in $(split "$1" "$2"); do
-	out="$out$sep$(normalize_string "$part")"
-	sep=.
-    done
-    printf '%s\n' "$out"
-)
-
-rename () (
-    # rename file $1 by giving it a normalized filename; keep $2
-    # filename extensions; if $3 is not null do a dry run
-    dir="$(dirname -- "$1")"
-    old="$(basename -- "$1")"
-    new="$(normalize_filename "$old" "$2")"
-    if [ "$new" != "$old" ]; then
-	${3:+echo} mv -i -- "$dir/$old" "$dir/$new"
-    fi
-)
-
 # command line arguments
 getopt -T 2> /dev/null
 if [ $? -ne 4 ]; then
@@ -101,8 +34,8 @@ if [ $? -ne 4 ]; then
     exit 1
 fi
 
-short_opts=e:d
-long_opts=help,dry
+short_opts=d:o:
+long_opts=dots:,other:,dry,help
 
 args="$(LC_ALL=C getopt -n "$0" -s sh -o $short_opts -l $long_opts -- "$@")"
 if [ $? -eq 0 ]; then
@@ -111,20 +44,23 @@ else
     exit 1
 fi
 
-e=
-dry=
+rightdots=1
+otherchars=
+mv="mv"
 while [ $# -gt 0 ]; do
     case "$1" in
 	--help)
 	    usage; exit 0 ;;
-	-p)
-	    e="$2"; shift
-	    if [ "$e" -ne "$e" ] 2> /dev/null; then
-		error "$0: option requires integer argument -- 'e'"
+	-d|--dots)
+	    rightdots="$2"; shift
+	    if [ "$rightdots" -ne "$rightdots" ] 2> /dev/null; then
+		error "$0: option -d requires integer argument -- '$1'"
 		exit 1
 	    fi ;;
-	-d|--dry)
-	    dry=1 ;;
+	-o|--other)
+	    otherchars="$2"; shift ;;
+	--dry)
+	    mv="echo mv" ;;
 	--)
 	    shift; break ;;
 	*)
@@ -133,16 +69,61 @@ while [ $# -gt 0 ]; do
     shift
 done
 
-# defaults args
-e=${e:-1}
-
 # check required args
 if [ $# -lt 1 ]; then
-    error "$0: required non-option argument missing"
+    error "$0: must specify at least one non-option argument"
     exit 1
 fi
 
+# awk program - somewhat simpler that using shell commands
+unixfy='
+BEGIN {
+    FS="[.]"
+}
+1 {
+    if (match($0, /.*[/]/)) {
+	dirpart = substr($0, 1, RLENGTH)
+	$0 = substr($0, RLENGTH+1)
+    } else {
+	dirpart = ""
+    }
+    if ($1 == "")
+	leftdots = 1
+    if (rightdots > -1) {
+	while(NF > (rightdots+1))
+	    sub(/[.]/, ",")
+    }
+    gsub("[^[:alnum:]." otherchars "]+", "-")
+    if (leftdots) {
+	$0 = "." substr($0,2)
+	leftdots = 0
+    }
+    do {
+	if (match($0, /[^.]-([.]|$)/) || match($0, /[.]-[^.]/))
+	    $0 = substr($0,1,RSTART) substr($0,RSTART+2)
+    } while (RSTART)
+    if (match($0, /^-[^.]/))
+	$0 = substr($0,2)
+    printf "%s%s\n", dirpart, tolower($0)
+}
+'
+
+# printf "otherchars=$otherchars\n"
+# printf "rightdots=$rightdots\n"
+# printf "mv=$mv\n"
+# printf "%s\n" "$@"
+
 # main loop
-for file in "$@"; do
-    rename "$file" "$e" "$dry"
-done
+printf "%s\000" "$@" | \
+    awk -v RS="\000" \
+	-v otherchars="$otherchars" \
+	-v rightdots=$rightdots \
+	"$unixfy" | \
+    while read dest; do
+	if [ "$1" != "$dest" ]; then
+	    $mv -i "$1" "$dest"
+	fi
+	shift
+    done
+
+
