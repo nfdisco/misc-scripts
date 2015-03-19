@@ -9,6 +9,8 @@
 # Note: step 1 may not be necessary if the id & media type can be
 # inferred from the input url.
 
+progname="$(basename "$0")"
+
 tempf="$(mktemp)"		# to keep list of temporary files
 tempfile () {
     mktemp | tee -a "$tempf"
@@ -25,12 +27,12 @@ trap "exit 2" 1 2 3 15
 
 error () {
     # print $1 to stderr
-    printf "%s: %s\n" "$0" "$1" 1>&2
+    printf -- "$progname: %s\n" "$1" 1>&2
 }
 
 usage () {
     cat <<EOF
-usage: $0 [OPTIONS] [--] [URL]
+usage: $progname [OPTIONS] [--] [URL]
 Download media files from the CCMA web sites.
 
 Options:
@@ -46,7 +48,7 @@ getopt -T 2> /dev/null
 
 short_opts=it:
 long_opts=media-info,type:,help
-args="$(LC_ALL=C getopt -n "$0" -s sh -o $short_opts -l $long_opts -- "$@")"
+args="$(LC_ALL=C getopt -n "$progname" -s sh -o $short_opts -l $long_opts -- "$@")"
 [ $? -eq 0 ] && eval set -- "$args" || exit 1
 
 dump_media_info=

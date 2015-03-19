@@ -3,10 +3,12 @@
 
 LC_ALL=C
 
+progname="$(basename "$0")"
+
 usage () {
     # write help message to stdout
     cat <<EOF
-usage: $0 OPTIONS [--] [OPERAND ...]
+usage: $progname OPTIONS [--] [OPERAND ...]
 Make backups using find and tar.
 
 Options:
@@ -20,14 +22,14 @@ Options:
 
 All arguments after "--"  are passed unchanged to find(1).
 
-$0 uses GNU find extensions.
+$progname uses GNU find extensions.
 
 EOF
 }
 
 error () {			# $1=message
     # write message to stderr
-    printf "$0: $1\n" 1>&2
+    printf "$progname: %s\n" "$1" 1>&2
 }
 
 parse_command_line_args () {	# $1=getopt string with quoted args
@@ -197,7 +199,7 @@ rest_args=
 opts="i:o:r:xn:"
 longopts="help"
 
-cl_args="$(getopt -n "$0" -s sh -o $opts -l $longopts -- "$@")"
+cl_args="$(getopt -n "$progname" -s sh -o $opts -l $longopts -- "$@")"
 
 parse_command_line_args "$cl_args" || exit $(($?-1))
 test -z "$n" && { error "required argument missing -- 'n'"; exit 1; }

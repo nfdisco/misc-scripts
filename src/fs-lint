@@ -1,9 +1,11 @@
 #!/bin/sh
 # Search file system for possible rubbish.
 
+progname="$(basename "$0")"
+
 usage () {
     cat <<EOF
-Usage: $0 [OPTIONS] [--] [PATH [PATH...]]
+Usage: $progname [OPTIONS] [--] [PATH [PATH...]]
 Search file system for possible rubbish.
 
 Options (at least one required):
@@ -20,14 +22,14 @@ Other options:
  -d, --delete     delete the files found
      --help       show this help
 
-$0 uses GNU find extensions.
+$progname uses GNU find extensions.
 
 EOF
 }
 
 error () {
     # print $1 to stderr
-    printf "%s\n" "$1" 1>&2
+    printf -- "$progname: %s\n" "$1" 1>&2
 }
 
 confirm_yes_no () {
@@ -97,7 +99,7 @@ fi
 opts=rdhsegbl
 long_opts=recursive,delete,hidden,links,empty,large,backup,latex,help
 
-args="$(LC_ALL=C getopt -n "$0" -s sh -o $opts -l $long_opts -- "$@")"
+args="$(LC_ALL=C getopt -n "$progname" -s sh -o $opts -l $long_opts -- "$@")"
 if [ $? -eq 0 ]; then
     eval set -- "$args"
 else
@@ -134,12 +136,12 @@ while [ $# -gt 0 ]; do
 done
 
 if [ -z "$actions" ]; then
-    error "$0: required option missing"
+    error "required option missing"
     exit 1
 fi
 
 if [ $# -lt 1 ]; then
-    error "$0: required non-option argument missing"
+    error "required non-option argument missing"
     exit 1
 fi
 

@@ -2,10 +2,12 @@
 # 
 # TODO: check that value of otherchars is valid in bracket expression.
 
+progname="$(basename "$0")"
+
 usage () {
     # show help
     cat <<EOF
-usage: $0 [OPTIONS] [--] [FILE [FILE...]]
+usage: $progname [OPTIONS] [--] [FILE [FILE...]]
 Rename files using Unix-friendly filenames.
 
 Options:
@@ -24,7 +26,7 @@ EOF
 
 error () {
     # write $1 to stderr
-    printf "%s\n" "$1" 1>&2
+    printf -- "$progname: %s\n" "$1" 1>&2
 }
 
 # command line arguments
@@ -37,7 +39,7 @@ fi
 short_opts=d:o:
 long_opts=dots:,other:,dry,help
 
-args="$(LC_ALL=C getopt -n "$0" -s sh -o $short_opts -l $long_opts -- "$@")"
+args="$(LC_ALL=C getopt -n "$progname" -s sh -o $short_opts -l $long_opts -- "$@")"
 if [ $? -eq 0 ]; then
     eval set -- "$args"
 else
@@ -54,7 +56,7 @@ while [ $# -gt 0 ]; do
 	-d|--dots)
 	    rightdots="$2"; shift
 	    if [ "$rightdots" -ne "$rightdots" ] 2> /dev/null; then
-		error "$0: option -d requires integer argument -- '$1'"
+		error "option -d requires integer argument -- '$1'"
 		exit 1
 	    fi ;;
 	-o|--other)
@@ -71,7 +73,7 @@ done
 
 # check required args
 if [ $# -lt 1 ]; then
-    error "$0: must specify at least one non-option argument"
+    error "must specify at least one non-option argument"
     exit 1
 fi
 

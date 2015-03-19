@@ -1,9 +1,11 @@
 #!/bin/sh
 
+progname="$(basename "$0")"
+
 usage () {
     # show help
     cat <<EOF
-usage: $0 [OPTIONS]
+usage: $progname [OPTIONS]
 Show CPU usage.
 
 Options:
@@ -18,7 +20,7 @@ if [ $? -ne 4 ]; then
     exit 1
 fi
 long_opts=help
-args="$(LC_ALL=C getopt -n "$0" -s sh -o "" -l $long_opts -- "$@")"
+args="$(LC_ALL=C getopt -n "$progname" -s sh -o "" -l $long_opts -- "$@")"
 if [ $? -eq 0 ]; then
     eval set -- "$args"
 else
@@ -37,4 +39,3 @@ while [ $# -gt 0 ]; do
 done
 
 top -b -n 1 | head -20
-    

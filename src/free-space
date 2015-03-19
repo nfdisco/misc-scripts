@@ -1,9 +1,11 @@
 #!/bin/sh
 
+progname="$(basename "$0")"
+
 usage () {
     # show help
     cat <<EOF
-usage: $0 [OPTIONS] [--] [PATH]
+usage: $progname [OPTIONS] [--] [PATH]
 Show available space.
 
 Options:
@@ -14,7 +16,7 @@ EOF
 
 error () {
     # write $1 to stderr
-    printf "%s\n" "$1" 1>&2
+    printf -- "$progname: %s\n" "$1" 1>&2
 }
 
 getopt -T 2> /dev/null
@@ -25,7 +27,7 @@ fi
 
 long_opts=help
 
-args="$(LC_ALL=C getopt -n "$0" -s sh -o "" -l $long_opts -- "$@")"
+args="$(LC_ALL=C getopt -n "$progname" -s sh -o "" -l $long_opts -- "$@")"
 if [ $? -eq 0 ]; then
     eval set -- "$args"
 else

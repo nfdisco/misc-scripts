@@ -1,11 +1,13 @@
 #!/bin/sh
 # Play media streams with mplayer.
 
+progname="$(basename "$0")"
+
 RCFILE="$HOME/.config/streams"
 
 usage () {
     cat <<EOF
-Usage: $0 [OPTIONS] [--] STREAM [MPLAYER_OPTIONS]
+Usage: $progname [OPTIONS] [--] STREAM [MPLAYER_OPTIONS]
 Play media streams with mplayer.
 
 Options:
@@ -22,7 +24,7 @@ EOF
 
 error () {
     # print $1 to stderr
-    printf '%s\n' "$1" 1>&2
+    printf -- "$progname: %s\n" "$1" 1>&2
 }
 
 read_rcfile () {
@@ -68,7 +70,7 @@ fi
 
 short_opts=l
 long_opts=list,help
-args="$(LC_ALL=C getopt -n "$0" -s sh -o $short_opts -l $long_opts -- "$@")"
+args="$(LC_ALL=C getopt -n "$progname" -s sh -o $short_opts -l $long_opts -- "$@")"
 if [ $? -eq 0 ]; then
     eval set -- "$args"
 else
@@ -92,7 +94,7 @@ while [ $# -gt 0 ]; do
 done
 
 if [ $# -lt 1 ]; then
-    error "$0: non-option argument required"
+    error "non-option argument required"
     exit 1
 fi
 stream_name="$1"
@@ -101,7 +103,7 @@ shift
 # get uri
 uri="$(stream_uri "$stream_name")"
 if [ -z "$uri" ]; then
-    error "$0: unknown stream: $1"
+    error "unknown stream: $1"
     exit 1
 fi
 
