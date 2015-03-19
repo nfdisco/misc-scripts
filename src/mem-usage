@@ -38,4 +38,4 @@ while [ $# -gt 0 ]; do
     shift
 done
 
-ps -e --sort=-%mem -o pid,%mem,ruser,comm | head -20
+ps -e --sort=-%mem -o pid,%mem,ruser,comm | head -n 20

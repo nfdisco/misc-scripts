@@ -38,4 +38,4 @@ while [ $# -gt 0 ]; do
     shift
 done
 
-top -b -n 1 | head -20
+top -b -n 1 | head -n 20
