@@ -45,5 +45,9 @@ while [ $# -gt 0 ]; do
     shift
 done
 
+if [ $# -gt 1 ]; then
+    error "too many arguments"
+    exit 1
+fi
+
 df -h -P "${1:-.}" | tail -n 1 | tr -s ' ' '\t' | cut -f 4
-    

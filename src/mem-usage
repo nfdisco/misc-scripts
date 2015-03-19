@@ -2,6 +2,11 @@
 
 progname="$(basename "$0")"
 
+error () {
+    # write $1 to stderr
+    printf -- "$progname: %s\n" "$1" 1>&2
+}
+
 usage () {
     # show help
     cat <<EOF
@@ -37,5 +42,10 @@ while [ $# -gt 0 ]; do
     esac
     shift
 done
+
+if [ $# -gt 0 ]; then
+    error "too many arguments"
+    exit 1
+fi
 
 ps -e --sort=-%mem -o pid,%mem,ruser,comm | head -n 20
