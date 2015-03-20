@@ -1,13 +1,10 @@
 #!/bin/sh
-# Download media files from the CCMA web sites.
+# Download media files from CCMA web sites.
 #
-# This process has three steps:
-#  1. Download the page to extract the media id and media type
-#  2. Download the JSON object that contains the URL to the actual file
+# This is done in three steps:
+#  1. Extract media id and type from the HTML data
+#  2. Query a server to get the file location
 #  3. Download the file
-#
-# Note: step 1 may not be necessary if the id & media type can be
-# inferred from the input url.
 
 progname="$(basename "$0")"
 
@@ -33,7 +30,7 @@ error () {
 usage () {
     cat <<EOF
 usage: $progname [OPTIONS] [--] [URL]
-Download media files from the CCMA web sites.
+Download media files from CCMA web sites.
 
 Options:
  -i    --media-info   show media information, do not download
@@ -68,12 +65,12 @@ while [ $# -gt 0 ]; do
     esac
     shift
 done
-	    
-[ $# -lt 1 ] && error "non-option argument required." && exit 1
-[ $# -gt 1 ] && error "too many non-option arguments." && exit 1
+
+[ $# -lt 1 ] && error "too few arguments" && exit 1
+[ $# -gt 1 ] && error "too many arguments" && exit 1
 
 get_media_id () (
-    # fetch $1, extract idint, data type
+    # fetch $1, extract idint, data type; return filename
     output=$(tempfile)
     html_data=$(tempfile)
     style_sheet=$(tempfile)
@@ -92,18 +89,18 @@ get_media_id () (
 </xsl:template>
 </xsl:stylesheet>
 EOF
-    
+
     wget -q -O "$html_data" "$1"
     if [ $? -ne 0 ]; then
 	error "wget exited with non-zero status, aborting."
 	return 1
     fi
     xsltproc --html "$style_sheet" "$html_data" 2> /dev/null > "$output"
-    printf -- "$output"
+    printf "%s\n" "$output"
 )
 
 get_media_info () (
-    # fetch media info for idint $1 of type $2
+    # fetch media info for idint $1 of type $2; return filename
     media_info="$(tempfile)"
     media_info_conv="$(tempfile)"
     server_response="$(tempfile)"
@@ -118,27 +115,30 @@ get_media_info () (
     if [ -n "$encoding" ]; then
 	iconv -f "$encoding" < "$media_info" > "$media_info_conv"
     fi
-    printf -- "$media_info_conv"
+    printf "%s\n" "$media_info_conv"
 )
 
-to_slug () {
-    # make lower-case, remove punctuation and replace spaces with hyphens
+make_slug () {
+    # to lower-case, remove punctuation and replace spaces with hyphens
     tr "[:upper:]_ -:;,." "[:lower:][-*]" | tr -c -d "[:alnum:]-" | tr -s -
 }
 
+# download page and extract relevant parameters
 media_id="$(get_media_id "$1")" || exit $?
 idint="$(sed -n "1p" < "$media_id")"
 type="$(sed -n "2p" < "$media_id")"
 
-[ -z "$idint" ] && error "could not find media id." && exit 1
-[ -z "$type" ] && error "could not find media type." && exit 1
+[ -z "$idint" ] && { error "could not find media id."; exit 1; }
+[ -z "$type" ] && { error "could not find media type."; exit 1; }
 
+# query server for media information
 media_info="$(get_media_info "$idint" "$type")" || exit $?
 if [ -n "$dump_media_info" ]; then
     cat "$media_info"
     exit
 fi
 
+# parse media information
 keys='
 .media.url // "",
 .media.format // "",
@@ -155,27 +155,27 @@ if [ $status -eq 127 -o $status -eq 126 ]; then
 elif [ $status -ne 0 ]; then
     error "cannot parse media info, aborting."
     exit 1
-fi    
+fi
 
 url="$(sed -n 1p < "$values")"
 format="$(sed -n "2s/.*/\L&/p" < "$values")"
 slug="$(sed -n "3s/.*/\L&/p" < "$values" | tr -s - | cut -d - -f -3)"
-title="$(sed -n "4p" <"$values" | to_slug)"
+title="$(sed -n "4p" <"$values" | make_slug)"
 time_stamp="$(sed -n "5s/.*/\L&/p" < "$values" | cut -c -10 | tr -d -)"
 
 [ -z "$url" ] && error "could not find media url, aborting." && exit 1
 
+# download file, save to file
 output=
 if [ -n "$format" ]; then
     if [ -n "$title" ]; then
-	
 	output="${title}.${format}"
     elif [ -n "$time_stamp" -a -n "$slug" ]; then
 	output="${time_stamp}-${slug}-${idint}.${format}"
     fi
 fi
 
-if [ -z "$output" -o -e "$output" ]; then
+if [ -z "$output" ]; then
     wget -nv --show-progress "${url}"
 else
     wget -nv --show-progress -O "${output}" "${url}"
