@@ -3,7 +3,9 @@
 
 progname="$(basename "$0")"
 
-RCFILE="$HOME/.config/streams"
+stream_db="${XDG_CONFIG_HOME:-$HOME/.config}/streams"
+mkdir -p "$(dirname "$stream_db")" || exit
+touch "$stream_db" || exit	# must exist
 
 usage () {
     cat <<EOF
@@ -11,42 +13,25 @@ Usage: $progname [OPTIONS] [--] STREAM [MPLAYER_OPTIONS]
 Play media streams with mplayer.
 
 Options:
- -l    --list      list of known streams
+ -l    --list      list known streams
        --help      show this help and exit
 
-Config file is: $RCFILE
+Using streams file: $stream_db
 
-Format of config file is one stream name and URL separated by white
-space per line.  Comments using the '#' character are allowed.
+Each line in this file must have two space-separated fields,
+specifying a stream name and a URI respectively.
+Comment character is '#'.
 
 EOF
 }
 
 error () {
     # print $1 to stderr
-    printf -- "$progname: %s\n" "$1" 1>&2
-}
-
-read_rcfile () {
-    # read contents of $1 stripping comments and redundant white space
-    cat "$1" | \
-	grep -v '^[[:space:]]*\(#.*\)*$' | \
-	sed 's/#.*//' | \
-	tr -s [[:space:]]
-}
-
-stream_uri () {
-    # return the URI part from $STREAMS corresponding to stream $1
-    printf '%s\n' "$STREAMS" | grep "^${1}[[:space:]]" | cut -f 2
-}
-
-stream_names () {
-    # return the name part for every line in $STREAMS
-    printf '%s\n' "$STREAMS" | cut -f 1 | fmt
+    printf "%s: %s\n" "$progname" "$1" 1>&2
 }
 
 play_stream () {
-    # play $1, with optional options to mplayer(1)
+    # play $1, other arguments are passed to mplayer
     stream="$1"
     shift
     if [ "${stream%.[mM]3[uU]}" = "$stream" ]; then
@@ -56,10 +41,15 @@ play_stream () {
     fi
 }
 
-# read streams file
-if [ -r "$RCFILE" ]; then
-    STREAMS="$(read_rcfile "$RCFILE")"
-fi
+stream_uri () {
+    # return stream uri for stream $1
+    awk -v name="$1" '/[^#[:blank:]]/ {sub(/#.*/, "")}; $1 == name {print $2}'
+}
+
+streams () {
+    # display stream names
+    awk '/[^#[:blank:]]/ {sub(/#.*/, ""); print $1}'
+}
 
 # command line arguments
 getopt -T 2> /dev/null
@@ -83,7 +73,7 @@ while [ $# -gt 0 ]; do
 	    usage
 	    exit;;
 	-l|--list)
-	    stream_names
+	    streams < "$stream_db" | sort | fmt
 	    exit;;
 	--)
 	    shift; break;;
@@ -101,12 +91,18 @@ stream_name="$1"
 shift
 
 # get uri
-uri="$(stream_uri "$stream_name")"
+uri="$(stream_uri "$stream_name" < "$stream_db")"
+
 if [ -z "$uri" ]; then
-    error "unknown stream: $1"
+    if ! streams < "$stream_db" \
+	    | grep "$stream_name" > /dev/null; then
+	error "no such stream: $stream_name"
+    else
+	error "stream has no URI: $stream_name"
+    fi
     exit 1
 fi
 
-# play uri
+# play stream
 printf "opening stream %s ...\n" "$uri"
 play_stream "$uri" "$@"
