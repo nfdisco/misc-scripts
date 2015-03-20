@@ -1,6 +1,4 @@
 #!/bin/sh
-# 
-# TODO: check that value of otherchars is valid in bracket expression.
 
 progname="$(basename "$0")"
 
@@ -17,9 +15,11 @@ Options:
      --help           show this help and exit
 
 By default the only characters allowed in filenames are alphanumeric
-characters, hyphens and the first dot counting from the right.  A
-leading dot is always allowed and does not count as dot as far as
-option -d is concerned.
+characters, nonconsecutive hyphens and the first dot counting from the
+right.
+
+A leading dot is always considered a valid character and does not
+count as dot to the effects and purposes of option -d.
 
 EOF
 }
@@ -28,6 +28,45 @@ error () {
     # write $1 to stderr
     printf -- "$progname: %s\n" "$1" 1>&2
 }
+
+escape_bre () {
+    # escape characters \, ], - and ^, which have a special meaning
+    # inside awk bracket expressions
+    printf "%s\n" "$1" | sed 's/[\]/\\\\\\&/g; s/[]^-]/\\\\&/g'
+}
+
+# awk program that does the actual job
+unixfy='
+BEGIN {
+    FS="[.]"
+}
+1 {
+    if (match($0, /.*[/]/)) {
+	dirpart = substr($0, 1, RLENGTH)
+	$0 = substr($0, RLENGTH+1)
+    } else {
+	dirpart = ""
+    }
+    if ($1 == "")
+	leftdots = 1
+    if (rightdots > -1) {
+	while(NF > (rightdots+1))
+	    sub(/[.]/, ",")
+    }
+    gsub(replacechars, "-")
+    if (leftdots) {
+	$0 = "." substr($0,2)
+	leftdots = 0
+    }
+    do {
+	if (match($0, /[^.]-([.]|$)/) || match($0, /[.]-[^.]/))
+	    $0 = substr($0,1,RSTART) substr($0,RSTART+2)
+    } while (RSTART)
+    if (match($0, /^-[^.]/))
+	$0 = substr($0,2)
+    printf "%s%s\n", dirpart, tolower($0)
+}
+'
 
 # command line arguments
 getopt -T 2> /dev/null
@@ -48,7 +87,7 @@ fi
 
 rightdots=1
 otherchars=
-mv="mv"
+dry=
 while [ $# -gt 0 ]; do
     case "$1" in
 	--help)
@@ -62,7 +101,7 @@ while [ $# -gt 0 ]; do
 	-o|--other)
 	    otherchars="$2"; shift ;;
 	--dry)
-	    mv="echo mv" ;;
+	    dry=1 ;;
 	--)
 	    shift; break ;;
 	*)
@@ -73,59 +112,36 @@ done
 
 # check required args
 if [ $# -lt 1 ]; then
-    error "must specify at least one non-option argument"
+    error "too few arguments"
     exit 1
 fi
-
-# awk program - somewhat simpler that using shell commands
-unixfy='
-BEGIN {
-    FS="[.]"
-}
-1 {
-    if (match($0, /.*[/]/)) {
-	dirpart = substr($0, 1, RLENGTH)
-	$0 = substr($0, RLENGTH+1)
-    } else {
-	dirpart = ""
-    }
-    if ($1 == "")
-	leftdots = 1
-    if (rightdots > -1) {
-	while(NF > (rightdots+1))
-	    sub(/[.]/, ",")
-    }
-    gsub("[^[:alnum:]." otherchars "]+", "-")
-    if (leftdots) {
-	$0 = "." substr($0,2)
-	leftdots = 0
-    }
-    do {
-	if (match($0, /[^.]-([.]|$)/) || match($0, /[.]-[^.]/))
-	    $0 = substr($0,1,RSTART) substr($0,RSTART+2)
-    } while (RSTART)
-    if (match($0, /^-[^.]/))
-	$0 = substr($0,2)
-    printf "%s%s\n", dirpart, tolower($0)
-}
-'
 
 # printf "otherchars=$otherchars\n"
 # printf "rightdots=$rightdots\n"
 # printf "mv=$mv\n"
 # printf "%s\n" "$@"
+# exit
+
+replacechars="[^[:alnum:].$(escape_bre "$otherchars")]+"
+
+# test regular expression, as some combinations will produce errors
+if ! printf "X\n" | awk "/$replacechars/" >/dev/null 2>&1; then
+    error "invalid characters: $otherchars"
+    exit 1
+fi
 
 # main loop
 printf "%s\000" "$@" | \
     awk -v RS="\000" \
-	-v otherchars="$otherchars" \
+	-v replacechars="$replacechars" \
 	-v rightdots=$rightdots \
 	"$unixfy" | \
-    while read dest; do
-	if [ "$1" != "$dest" ]; then
-	    $mv -i "$1" "$dest"
+    while read -r dest; do
+	[ "$1" != "$dest" ] || continue
+	if [ -z "$dry" ]; then
+	    mv -i "$1" "$dest"
+	else
+	    printf "mv -i %s %s\n" "$1" "$dest"
 	fi
 	shift
     done
-
-
