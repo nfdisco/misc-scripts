@@ -1,16 +1,15 @@
 #!/bin/sh
-# Search file system for possible rubbish.
 
 progname="$(basename "$0")"
 
 usage () {
     cat <<EOF
 Usage: $progname [OPTIONS] [--] [PATH [PATH...]]
-Search file system for possible rubbish.
+Search the filesystem for various types of files.
 
-Options (at least one required):
+Options (at least one is required):
 
- -h, --hidden     search for dot files or directories
+ -h, --hidden     search for hidden files
  -s, --links      search for broken symbolic links
  -e, --empty      search for empty files or directories
  -g, --large      search for large files
@@ -20,7 +19,7 @@ Options (at least one required):
 Other options:
  -r, --recursive  walk the directory tree recursively
  -d, --delete     delete the files found
-     --help       show this help
+     --help       show this help and exit
 
 $progname uses GNU find extensions.
 
@@ -29,7 +28,7 @@ EOF
 
 error () {
     # print $1 to stderr
-    printf -- "$progname: %s\n" "$1" 1>&2
+    printf "%s: %s\n" "$progname" "$1" 1>&2
 }
 
 confirm_yes_no () {
@@ -68,7 +67,7 @@ empty () {
     find "$1" $2 -depth -xdev \( -type f -o -type d \) -empty $3
 }
 
-big () {
+large () {
     # search $1 for large files, with options $2, do action $3
     find "$1" $2 -depth -xdev -type f -size +100M $3
 }
@@ -83,11 +82,10 @@ latex () {
 
 print_or_delete () {
     # perform action $1 on path $2, optionally recursively $3
-    if "$@" -ls | grep ^ && [ -n "$d" ]; then
+    if "$@" -ls | grep ^ && [ -n "$delete" ]; then
 	confirm_yes_no "delete?" && "$@" -delete
     fi
 }
-
 
 # command line arguments
 getopt -T 2> /dev/null
@@ -106,27 +104,29 @@ else
     exit 1
 fi
 
-d= r= actions=
+delete=
+recursive=
+targets=
 while [ $# -gt 0 ]; do
     case "$1" in
 	--help)
 	    usage; exit 0 ;;
 	-r|--recursive)
-	    r=1 ;;
+	    recursive=1 ;;
 	-d|--delete)
-	    d=1 ;;
+	    delete=1 ;;
 	-h|--hidden)
-	    actions="$actions dot_files" ;;
+	    targets="$targets dot_files" ;;
 	-s|--links)
-	    actions="$actions links" ;;
+	    targets="$targets links" ;;
 	-e|--empty)
-	    actions="$actions empty" ;;
+	    targets="$targets empty" ;;
 	-g|--large)
-	    actions="$actions big" ;;
+	    targets="$targets large" ;;
 	-b|--backup)
-	    actions="$actions backups" ;;
+	    targets="$targets backups" ;;
 	-l|--latex)
-	    actions="$actions latex" ;;
+	    targets="$targets latex" ;;
 	--)
 	    shift; break ;;
 	*)
@@ -135,26 +135,24 @@ while [ $# -gt 0 ]; do
     shift
 done
 
-if [ -z "$actions" ]; then
-    error "required option missing"
+if [ -z "$targets" ]; then
+    error "option required"
     exit 1
 fi
 
 if [ $# -lt 1 ]; then
-    error "required non-option argument missing"
+    error "too few arguments"
     exit 1
 fi
 
-actions=$(printf "%s\n" $actions | sort -u)
-
 opts=
-if [ -z "$r" ]; then
+if [ -z "$recursive" ]; then
     opts="-maxdepth 1"
 fi
 
 # main loop
 for path in "$@"; do
-    for action in $actions; do
-	print_or_delete $action "$path" "$opts"
+    for target in $targets; do
+	print_or_delete $target "$path" "$opts"
     done
 done
