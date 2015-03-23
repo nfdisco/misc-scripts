@@ -36,16 +36,21 @@ escape_bre () {
 }
 
 # awk program that does the actual job
-unixfy='
+unixfy_awk='
 BEGIN {
     FS="[.]"
 }
 1 {
+    sub(/\/$/, "")
     if (match($0, /.*[/]/)) {
 	dirpart = substr($0, 1, RLENGTH)
 	$0 = substr($0, RLENGTH+1)
     } else {
 	dirpart = ""
+    }
+    if ($0 == "" || $0 ~ /^[.]{1,2}$/) {
+        print ""
+        next
     }
     if ($1 == "")
 	leftdots = 1
@@ -64,6 +69,10 @@ BEGIN {
     } while (RSTART)
     if (match($0, /^-[^.]/))
 	$0 = substr($0,2)
+    if ($0 ~ /^[.]{1,2}$/) {
+        print ""
+        next
+    }
     printf "%s%s\n", dirpart, tolower($0)
 }
 '
@@ -135,9 +144,10 @@ printf "%s\000" "$@" | \
     awk -v RS="\000" \
 	-v replacechars="$replacechars" \
 	-v rightdots=$rightdots \
-	"$unixfy" | \
+	"$unixfy_awk" | \
     while read -r dest; do
 	[ "$1" != "$dest" ] || continue
+	[ -n "$1" ] && [ -n "$dest" ] || continue
 	if [ -z "$dry" ]; then
 	    mv -i "$1" "$dest"
 	else
