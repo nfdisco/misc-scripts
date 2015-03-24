@@ -1,6 +1,7 @@
 #!/bin/sh
 
 LC_ALL=C
+LANG=C
 
 progname="$(basename "$0")"
 
@@ -48,7 +49,7 @@ EOF
 
 conf () {
     # write contents (minus header) of config file section $1 to stdout
-    if [ ! -e "$config" ]; then
+    if [ ! -e "$config_file" ]; then
 	return 1
     fi
     cat "$config_file" | sed '/^#/ d; /^\[.*\]$/ i\
@@ -151,9 +152,6 @@ if [ -z "$origin" -a -z "$destdir" -a -z "$noconf" ]; then
     shift
 fi
 
-[ -z "$origin" ] && { error "origin path required"; exit 1; }
-[ -z "$destdir" ] && { error "destination path required"; exit 1; }
-
 # printf "help: %s\n" "$help"
 # printf "origin: %s\n" "$origin"
 # printf "destdir: %s\n" "$destdir"
@@ -161,8 +159,13 @@ fi
 # printf "name: %s\n" "$name"
 # printf "other args --\n"
 # printf "%s\n" "$@"
+# exit
 
-[ -d "$destdir" ] || { error "no such directory"; exit 1; }
+[ -z "$origin" ] && { error "origin path required"; exit 1; }
+[ -z "$destdir" ] && { error "destination path required"; exit 1; }
+
+[ -d "$destdir" ] || { error "no such directory: $destdir"; exit 1; }
+[ -d "$origin" ] || { error "no such directory: $origin"; exit 1; }
 
 filenames="$(tempfile)" || exit
 filesizes="$(tempfile)" || exit
@@ -172,11 +175,11 @@ prev="$(cd "$destdir" && ls "${name}".* 2> /dev/null \
 prevver="$(printf "%s\n" "$prev" | sed 's/.*\.\([0-9][0-9]*\)\.tar.*/\1/')"
 if [ "$prevver" -eq "$prevver" ] 2> /dev/null ; then
     currver=$(($prevver+1))
-    find "$origin" -newer "${destdir}/$prev" "$@" \
+    find -P "$origin" "$@" -newer "${destdir}/$prev" \
 	 -fprint0 "$filenames" -printf "%s\n" > "$filesizes"
 else
     currver=0
-    find "$origin" "$@" -fprint0 "$filenames" -printf "%s\n" > "$filesizes"
+    find -P "$origin" "$@" -fprint0 "$filenames" -printf "%s\n" > "$filesizes"
 fi
 status=$?
 if [ $status -ne 0 ]; then
@@ -184,9 +187,10 @@ if [ $status -ne 0 ]; then
    exit $status
 fi
 
-originsize="$(awk -v x=0 '/./ {x=x+$1} END {print x}' < "$filesizes")"
-availspace="$(df -P "$destdir"| tail -n 1 | tr -s ' '| cut -d ' ' -f 4)"
-outputfile="${destdir}/${name}.${currver}.tar.gz"
+originsize=$(awk -v x=0 '/./ {x=x+$1} END {print x}' < "$filesizes")
+availspace=$((1024 * $(df -k -P "$destdir" \
+			     | tail -n 1 | tr -s ' '| cut -d ' ' -f 4)))
+outputfile="${destdir}/${name}.${currver}.tar.gpg"
 
 if [ "$currver" -gt 0 ]; then
     printf "previous backup found\n"
@@ -202,7 +206,7 @@ if [ -e "$outputfile" ]; then
     printf "output file already exists -- it will be OVERWRITTEN\n"
 fi
 
-printf "output directory is: '%s'\n" "$destdir"
+printf "output directory is: '%s'\n" "$(dirname $outputfile)"
 printf "%s available in output directory\n" \
        "$(human_friendly_units "$availspace")"
 
@@ -216,12 +220,13 @@ while [ "$REPLY" != "y" ]; do
     esac
 done
 
-# run_tar
-tar --file "$outputfile" --null --files-from "$filenames" --create \
-    --no-recursion --preserve-permissions --totals --gzip
+# run tar
+tar --null --files-from "$filenames" --create \
+    --no-recursion --preserve-permissions --totals \
+    | gpg -c --force-mdc > "$outputfile"
 status=$?
 if [ $status -ne 0 ]; then
-    error "tar exited with non-zero status: $status"
+    error "an error occurred: $status"
     exit $status
 fi
 printf "bye.\n"
