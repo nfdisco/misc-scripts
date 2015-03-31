@@ -146,12 +146,12 @@ printf "%s\000" "$@" | \
 	-v rightdots=$rightdots \
 	"$unixfy_awk" | \
     while read -r dest; do
-	[ "$1" != "$dest" ] || continue
-	[ -n "$1" ] && [ -n "$dest" ] || continue
-	if [ -z "$dry" ]; then
-	    mv -i "$1" "$dest"
-	else
-	    printf "mv -i %s %s\n" "$1" "$dest"
+	if [ "$1" != "$dest" ] && [ -n "$1" ] && [ -n "$dest" ]; then
+	    if [ -n "$dry" ]; then
+		printf "mv -i %s %s\n" "$1" "$dest"
+	    else
+		mv -i "$1" "$dest"
+	    fi
 	fi
 	shift
     done

@@ -167,6 +167,7 @@ fi
 [ -d "$destdir" ] || { error "no such directory: $destdir"; exit 1; }
 [ -d "$origin" ] || { error "no such directory: $origin"; exit 1; }
 
+# run find
 filenames="$(tempfile)" || exit
 filesizes="$(tempfile)" || exit
 
