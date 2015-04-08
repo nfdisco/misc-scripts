@@ -1,0 +1,21 @@
+Misc scripts
+============
+
+A collection of shell scripts for various purposes.
+
+- backup: Make backups using find and tar
+- ccma-dl: Download media files from the CCMA
+- cpu-usage: Show CPU usage
+- free-space: Show available space
+- mem-usage: Show memory usage
+- play-stream: Play media streams with mplayer
+- unixfy: Rename files using Unix-friendly filenames
+
+Installation
+------------
+
+    $ aclocal
+    $ automake -c --add-missing
+    $ autoconf
+    $ ./configure
+    $ make install

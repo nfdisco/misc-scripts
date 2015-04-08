@@ -10,3 +10,4 @@ missing
 src/Makefile
 src/Makefile.in
 src/unixfy.awk
+src/fs-lint

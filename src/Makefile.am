@@ -3,7 +3,6 @@ dist_bin_SCRIPTS = \
 	ccma-dl \
 	cpu-usage \
 	free-space \
-	fs-lint \
 	mem-usage \
 	play-stream \
 	unixfy
