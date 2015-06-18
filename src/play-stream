@@ -30,14 +30,19 @@ error () {
     printf "%s: %s\n" "$progname" "$1" 1>&2
 }
 
+is_playlist () {
+    # true if $1 is a playlist url
+    printf "%s" "$1" | grep -q -i '\.\(pls\|m3u\)$'
+}
+
 play_stream () {
     # play $1, other arguments are passed to mplayer
     stream="$1"
     shift
-    if [ "${stream%.[mM]3[uU]}" = "$stream" ]; then
-	mplayer "$@" "$stream"
-    else
+    if is_playlist "$stream"; then
 	mplayer "$@" --playlist="$stream"
+    else
+	mplayer "$@" "$stream"
     fi
 }
 
