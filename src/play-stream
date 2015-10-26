@@ -40,7 +40,7 @@ play_stream () {
     stream="$1"
     shift
     if is_playlist "$stream"; then
-	mplayer "$@" --playlist="$stream"
+	mplayer "$@" -playlist "$stream"
     else
 	mplayer "$@" "$stream"
     fi
