@@ -222,8 +222,8 @@ while [ "$REPLY" != "y" ]; do
 done
 
 # run tar
-tar --null --files-from "$filenames" --create \
-    --no-recursion --preserve-permissions --totals \
+tar --no-recursion --null --files-from "$filenames" \
+    --preserve-permissions --create --totals \
     | gpg -c --force-mdc > "$outputfile"
 status=$?
 if [ $status -ne 0 ]; then
