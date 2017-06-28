@@ -9,7 +9,6 @@ A collection of shell scripts for various purposes.
 - free-space: Show available space
 - mem-usage: Show memory usage
 - play-stream: Play media streams with mplayer
-- unixfy: Rename files using Unix-friendly filenames
 
 Installation
 ------------

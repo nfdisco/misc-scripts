@@ -4,5 +4,4 @@ dist_bin_SCRIPTS = \
 	cpu-usage \
 	free-space \
 	mem-usage \
-	play-stream \
-	unixfy
+	play-stream
